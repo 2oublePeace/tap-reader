@@ -33,7 +33,7 @@
 ```text
 tech(TP-1): перевести Decompose-компоненты на Pure Kotlin [ADR-0001]
 tech(TP-1): настроить инфраструктуру Docs-as-Code и зафиксировать ADR-0001 [ADR-0001]
-feature(TP-2): реализовать экран создания привычки [RFC-0001]
+feature(TP-2): реализовать экран чтения с переводом слова по тапу [RFC-0001]
 fix(TP-15): исправить мерцание при переключении дочерних экранов
 ```
 
@@ -92,5 +92,5 @@ feature/TP-1/2-implement-profile-screen
 tech/TP-4/0-configure-room-database
 
 // Багфикс TP-15:
-fix/TP-15/0-fix-timer-notification-leak
+fix/TP-15/0-fix-sentence-selection-offset
 ```

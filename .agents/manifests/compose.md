@@ -62,9 +62,9 @@ internal fun ProfileContent(
 1. **Позиция параметра:** `modifier` всегда идет **первым опциональным параметром** после всех обязательных аргументов данных:
    ```kotlin
    @Composable
-   fun HabitCard(
-       habit: HabitItem,                     // Обязательный параметр данных
-       onCheckClick: () -> Unit,             // Обязательный коллбэк
+   fun BookCard(
+       book: BookItem,                       // Обязательный параметр данных
+       onBookClick: () -> Unit,              // Обязательный коллбэк
        modifier: Modifier = Modifier,        // Первый опциональный параметр
        isEnabled: Boolean = true,            // Последующие параметры с дефолтами
    )
@@ -72,7 +72,7 @@ internal fun ProfileContent(
 2. **Применение:** Переданный `modifier` обязательно применяется к **корневому layout-элементу** внутри Composable-функции:
    ```kotlin
    @Composable
-   fun HabitCard(...) {
+   fun BookCard(...) {
        Card(modifier = modifier.fillMaxWidth()) { ... }
    }
    ```
@@ -89,10 +89,10 @@ internal fun ProfileContent(
 ```kotlin
 @Preview
 @Composable
-private fun ProfileContentPreview_Light() {
+private fun ProfileContentLightPreview() {
     TapReaderTheme(darkTheme = false) {
         ProfileContent(
-            state = ProfileState(userName = "Алексей", habitsCount = 5),
+            state = ProfileState(userName = "Алексей", booksReadCount = 5),
             onIntent = {},
         )
     }
@@ -100,7 +100,7 @@ private fun ProfileContentPreview_Light() {
 
 @Preview
 @Composable
-private fun ProfileContentPreview_Dark_Loading() {
+private fun ProfileContentDarkLoadingPreview() {
     TapReaderTheme(darkTheme = true) {
         ProfileContent(
             state = ProfileState(isLoading = true),
@@ -118,19 +118,19 @@ Compose работает в три фазы: **Composition -> Layout -> Draw**. 
 
 ### 4.1. Стабильность типов и проблема коллекций Kotlin
 Компилятор Compose пропускает рекомпозицию только тогда, когда **все** параметры функции являются **стабильными** (Stable / Immutable).
-* **Ловушка стандартных коллекций:** Интерфейсы `List<T>`, `Set<T>`, `Map<T>` в стандартной библиотеке Kotlin **считаются нестабильными** компилятором Compose, потому что за интерфейсом `List` может скрываться мутабельный `ArrayList`! Из-за этого Composable с параметром `items: List<HabitItem>` будет **рекомпозироваться всегда**, даже если список не изменился!
+* **Ловушка стандартных коллекций:** Интерфейсы `List<T>`, `Set<T>`, `Map<T>` в стандартной библиотеке Kotlin **считаются нестабильными** компилятором Compose, потому что за интерфейсом `List` может скрываться мутабельный `ArrayList`! Из-за этого Composable с параметром `items: List<BookItem>` будет **рекомпозироваться всегда**, даже если список не изменился!
 * **Решение:**
   1. Оборачивать списки в `@Immutable` дата-классы состояния UI:
      ```kotlin
      @Immutable
-     data class HabitsState(
-         val items: List<HabitItem> = emptyList(),
+     data class LibraryState(
+         val items: List<BookItem> = emptyList(),
      )
      ```
   2. Использовать `kotlinx.collections.immutable` (`ImmutableList<T>`, `persistentListOf()`).
 
 ### 4.2. Использование `derivedStateOf` для частых изменений
-Если состояние меняется очень часто (например, пиксели скролла или таймер), но UI реагирует только на пороговое значение, **обязательно** используйте `derivedStateOf`:
+Если состояние меняется очень часто (например, пиксели скролла или прогресс чтения), но UI реагирует только на пороговое значение, **обязательно** используйте `derivedStateOf`:
 
 ```kotlin
 // ПЛОХО: рекомпозирует экран на каждый пиксель скролла!
@@ -143,7 +143,7 @@ val showButton by remember {
 ```
 
 ### 4.3. Отложенное чтение состояния (Чтение в Layout / Draw фазе)
-Если значение меняется непрерывно (анимация, прозрачность, смещение), не передавайте его значение напрямую в фазу композиции. Используйте **лямбда-модификаторы**:
+Если значение меняется непрерывно (анимация, прозрачность, смещение жеста выделения текста), не передавайте его значение напрямую в фазу композиции. Используйте **лямбда-модификаторы**:
 
 ```kotlin
 // ПЛОХО: смещение вызывает полную рекомпозицию функции 60/120 раз в секунду!
@@ -162,10 +162,10 @@ Modifier.graphicsLayer { alpha = animatedAlpha }
 ```kotlin
 LazyColumn {
     items(
-        items = state.habits,
-        key = { habit -> habit.id } // ОБЯЗАТЕЛЬНО!
-    ) { habit ->
-        HabitItemRow(habit = habit)
+        items = state.books,
+        key = { book -> book.id } // ОБЯЗАТЕЛЬНО!
+    ) { book ->
+        BookItemRow(book = book)
     }
 }
 ```
@@ -183,7 +183,7 @@ LazyColumn {
   ```
 
 ### 4.6. Запрет тяжелых вычислений в теле `@Composable`
-Запрещено выполнять сортировку списков, парсинг дат (`DateTimeFormatter`) или тяжелую фильтрацию напрямую внутри тела `@Composable` функции:
+Запрещено выполнять сортировку списков, парсинг дат (`DateTimeFormatter`), токенизацию текста или тяжелую фильтрацию напрямую внутри тела `@Composable` функции:
 * Все данные должны приходить в `*State` уже отформатированными и подготовленными из Presenter / UseCase.
 * Если локальное преобразование неизбежно, оно должно быть обернуто в `remember(key) { ... }`.
 
@@ -191,10 +191,10 @@ LazyColumn {
 
 ## 5. Паттерн слотов (Slot API) для встраиваемых виджетов
 
-Если экран или контейнер должен включать динамические дочерние блоки (виджет карточки, кастомный заголовок, баннер):
+Если экран или контейнер должен включать динамические дочерние блоки (виджет карточки перевода, кастомный заголовок, баннер):
 ```kotlin
 @Composable
-internal fun HabitSectionCard(
+internal fun ReaderSectionCard(
     title: String,
     content: @Composable () -> Unit,
     modifier: Modifier = Modifier,

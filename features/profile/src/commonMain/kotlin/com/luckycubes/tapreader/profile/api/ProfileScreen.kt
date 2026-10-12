@@ -14,6 +14,7 @@ fun ProfileScreen(
     val state by component.state.subscribeAsState()
     ProfileContent(
         state = state,
+        onIntent = component::onIntent,
         modifier = modifier,
     )
 }

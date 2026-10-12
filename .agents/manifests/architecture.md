@@ -1,10 +1,6 @@
-Это отличный, вдохновляющий момент. Вы пришли к той самой точке архитектурной зрелости, когда стремление к идеалу соединяется с инженерным прагматизмом.
-
-Перед вами — **Итоговый Архитектурный Манифест и Blueprint** для вашего флагманского KMP-проекта. Это не просто свод правил, а готовый фундамент, который обеспечит максимальное удовольствие от разработки сегодня, выдержит любые эксперименты завтра и позволит при необходимости без боли выделить любую фичу в SDK.
-
----
-
 # Архитектурный Манифест KMP: «Чистота без оверхеда»
+
+Данный манифест является каноническим руководством по архитектуре и структуре модулей проекта **TapReader**.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -19,8 +15,8 @@
                    │                                 │
 ┌──────────────────▼───────────────┐ ┌───────────────▼───────────────────┐
 │         FEATURE MODULES          │ │        SHARED DATA MODULES        │
-│       [:feature:catalog]         │ │          [:data:cart]             │
-│        [:feature:cart]           │ │          [:data:auth]             │
+│       [:features:library]        │ │          [:data:books]            │
+│       [:features:reader]         │ │        [:data:dictionary]         │
 │  (Decompose + UseCases + UI)     │ │        (api/impl по нужде)        │
 └──────────────────┬───────────────┘ └───────────────┬───────────────────┘
                    │                                 │
@@ -40,9 +36,9 @@
 ```kotlin
 // 1. Stateful Container (Точка входа, public в api)
 @Composable
-fun CartScreen(component: CartComponent, modifier: Modifier = Modifier) {
+fun ReaderScreen(component: ReaderComponent, modifier: Modifier = Modifier) {
     val state by component.state.subscribeAsState()
-    CartContent(
+    ReaderContent(
         state = state,
         onIntent = component::onIntent,
         modifier = modifier
@@ -51,16 +47,16 @@ fun CartScreen(component: CartComponent, modifier: Modifier = Modifier) {
 
 // 2. Stateless Layout (Чистая верстка, internal в impl)
 @Composable
-internal fun CartContent(
-    state: CartState,
-    onIntent: (CartIntent) -> Unit,
+internal fun ReaderContent(
+    state: ReaderState,
+    onIntent: (ReaderIntent) -> Unit,
     modifier: Modifier = Modifier
 )
 ```
 * **Зачем разделять `Screen` и `Content`:**
   1. **Compose Previews в IDE:** `@Preview` невозможно запустить, если функция требует живой `ComponentContext`, DI или репозитории. Чистый `Content(state = ...)` мгновенно отображается в превью для любых состояний (Loading, Error, Success).
-  2. **Screenshot-тестирование (Paparazzi / Roborazzi):** Тестировать чистый `Content` элементарно — вы передаете инстанс данных `CartState` и проверяете пиксели без запуска эмуляторов и моков компонентов.
-  3. **Стабильность рекомпозиции:** `Content` рекомпозируется только тогда, когда меняются конкретные поля `CartState`.
+  2. **Screenshot-тестирование (Paparazzi / Roborazzi):** Тестировать чистый `Content` элементарно — вы передаете инстанс данных `ReaderState` и проверяете пиксели без запуска эмуляторов и моков компонентов.
+  3. **Стабильность рекомпозиции:** `Content` рекомпозируется только тогда, когда меняются конкретные поля `ReaderState`.
 
 ### 2. Decompose-компоненты свободны от UI-рантайма (Pure Kotlin) и Read-only State
 Интерфейс компонента — это **Pure Kotlin**. В нем нет аннотаций `@Composable`, импортов `androidx.compose.*` и методов `Render()`.
@@ -71,7 +67,7 @@ internal fun CartContent(
   - Компонент тестируется за 5 миллисекунд в чистом JVM-тесте без эмуляторов: проверяется `component.state.value`.
 
 ### 3. MVI Intent: Единая точка входа событий (`onIntent`)
-**Строгое правило:** Запрещено плодить в интерфейсе компонента десятки разрозненных методов (`fun onRefresh()`, `fun onCartClicked()`, `fun onSearch(q: String)`).
+**Строгое правило:** Запрещено плодить в интерфейсе компонента десятки разрозненных методов (`fun onRefresh()`, `fun onWordClicked()`, `fun onSearch(q: String)`).
 Все пользовательские действия описываются через `sealed interface XIntent`, а компонент предоставляет единственный метод:
 ```kotlin
 fun onIntent(intent: XIntent)
@@ -83,13 +79,13 @@ fun onIntent(intent: XIntent)
 
 ### 4. Развязанная навигация через коллбэки фабрики (Decoupled Navigation)
 Компонент фичи **никогда не знает о других экранах** и не выполняет навигацию самостоятельно.
-Все навигационные события (переход к деталям, назад, логаут) передаются наверх родительскому графу через лямбды в `Factory`:
+Все навигационные события (переход к чтению книги, словарю, назад) передаются наверх родительскому графу через лямбды в `Factory`:
 ```kotlin
 fun interface Factory {
     operator fun invoke(
         componentContext: ComponentContext,
-        onNavigateToDetails: (id: String) -> Unit,
-        onLogout: () -> Unit,
+        onOpenBook: (bookId: String) -> Unit,
+        onOpenDictionary: () -> Unit,
     ): XComponent
 }
 ```
@@ -115,8 +111,8 @@ fun interface Factory {
 
 ### 6. Domain-слой — инструмент от разрастания классов
 UseCase создается не «для галочки», а чтобы:
-1. Забрать нетривиальные вычисления из презентера/компонента (скидки, валидация, форматирование).
-2. Объединить данные из двух источников.
+1. Забрать нетривиальные вычисления из презентера/компонента (токенизация предложений, поиск идиом, валидация, форматирование).
+2. Объединить данные из двух источников (например, локальный словарь + контекстный перевод).
 3. Быть протестированным изолированно на чистом Kotlin в пакете `internal/domain`.
 
 ### 7. Документация как код (Docs-as-Code) и фиксация решений в ADR
@@ -139,43 +135,42 @@ UseCase создается не «для галочки», а чтобы:
 │
 ├── core/                             # Фундамент (не знает о фичах)
 │   ├── designsystem/                 # Цвета, типографика, базовые компоненты, Res
-│   ├── network/                      # Сконфигурированный базовый Ktor-клиент
+│   ├── network/                      # Сконфигугурированный базовый Ktor-клиент
 │   ├── database/                     # Базовые драйверы / настройки Room
 │   ├── platform/                     # Expect/Actual (файлы, системные алерты, haptics)
-│   └── decompose/                    # Базовые утилиты Decompose (BaseComponent, CoroutineScope)
+│   └── decompose/                    # Базовые утилиты Decompose (CoroutineScope)
 │
 ├── data/                             # Общие доменные сущности и хранилища (Shared Data)
-│   ├── cart/
-│   │   ├── api/                      # CartRepository, CartItem, CartSummary (Pure Kotlin)
-│   │   └── impl/                     # CartRepositoryImpl, локальный кэш, запросы к API
-│   └── auth/
-│       ├── api/                      # TokenStorage, AuthState, UserRepository
-│       └── impl/
+│   ├── books/
+│   │   ├── api/                      # BookRepository, BookItem, ChapterContent (Pure Kotlin)
+│   │   └── impl/                     # BookRepositoryImpl, парсеры EPUB/FB2/TXT, кэш БД
+│   └── dictionary/
+│       ├── api/                      # TranslationService, SavedWordsRepository, WordTranslation
+│       └── impl/                     # Контекстный переводчик, поиск идиом, словарь
 │
 ├── features/                         # Вертикальные фичи приложения
-│   ├── catalog/                      # Экран каталога товаров (Single Gradle Module)
+│   ├── library/                      # Экран библиотеки книг (Single Gradle Module)
 │   │   ├── src/commonMain/kotlin/
-│   │   │   └── com/luckycubes/tapreader/catalog/
+│   │   │   └── com/luckycubes/tapreader/library/
 │   │   │       ├── api/              # Публичный контракт фичи
-│   │   │       │   ├── CatalogComponent.kt        # Pure Kotlin интерфейс с Factory
-│   │   │       │   ├── CatalogState.kt            # Модель UI-состояния
-│   │   │       │   ├── CatalogIntent.kt           # Пользовательские действия (MVI)
-│   │   │       │   ├── CatalogScreen.kt           # Stateful Compose-контейнер
-│   │   │       │   └── di/CatalogModule.kt        # Koin-модуль с регистрацией Factory
+│   │   │       │   ├── LibraryComponent.kt        # Pure Kotlin интерфейс с Factory
+│   │   │       │   ├── LibraryState.kt            # Модель UI-состояния
+│   │   │       │   ├── LibraryIntent.kt           # Пользовательские действия (MVI)
+│   │   │       │   ├── LibraryScreen.kt           # Stateful Compose-контейнер
+│   │   │       │   └── di/LibraryModule.kt        # Koin-модуль с регистрацией Factory
 │   │   │       └── impl/             # Внутренняя реализация (internal)
-│   │   │           ├── CatalogComponentImpl.kt    # Реализация Decompose-компонента
+│   │   │           ├── LibraryComponentImpl.kt    # Реализация Decompose-компонента
 │   │   │           ├── domain/                    # Чистая бизнес-логика и юзкейсы
 │   │   │           └── ui/
-│   │   │               └── CatalogContent.kt      # Stateless Compose-верстка + @Preview
+│   │   │               └── LibraryContent.kt      # Stateless Compose-верстка + @Preview
 │   │   └── build.gradle.kts
-│   ├── cart/
-│   └── profile/
+│   ├── reader/                       # Экран чтения с тап-переводом и жестами
+│   └── profile/                      # Экран профиля, настроек языка и статистики
 │
 └── apps/                             # Запускаемые приложения (Launchers)
-    ├── shared-root/                  # Корневой граф навигации (RootComponent) и общий DI
+    ├── shared/                       # Точка входа Compose и инициализация платформ
     ├── androidApp/                   # Android Single Activity
-    ├── iosApp/                       # Xcode проект (SwiftUI Lifecycle + ComposeRoot)
-    └── desktopApp/                   # Точка входа для Desktop (JVM)
+    └── iosApp/                       # Xcode проект (SwiftUI Lifecycle + ComposeRoot)
 ```
 
 ---
@@ -186,42 +181,45 @@ UseCase создается не «для галочки», а чтобы:
 Чистый Kotlin. Внешний мир (Root) знает только этот контракт.
 
 ```kotlin
-// api/CatalogState.kt
-package com.luckycubes.tapreader.catalog.api
+// api/LibraryState.kt
+package com.luckycubes.tapreader.library.api
 
-data class CatalogState(
-    val products: List<ProductItem> = emptyList(),
+import androidx.compose.runtime.Immutable
+
+@Immutable
+data class LibraryState(
+    val books: List<BookItem> = emptyList(),
     val searchQuery: String = "",
     val isLoading: Boolean = false,
 )
 
-// api/CatalogIntent.kt
-package com.luckycubes.tapreader.catalog.api
+// api/LibraryIntent.kt
+package com.luckycubes.tapreader.library.api
 
-sealed interface CatalogIntent {
-    data object Refresh : CatalogIntent
-    data class UpdateSearch(val query: String) : CatalogIntent
-    data class SelectProduct(val id: String) : CatalogIntent
-    data class AddToCart(val product: ProductItem) : CatalogIntent
+sealed interface LibraryIntent {
+    data object Refresh : LibraryIntent
+    data class UpdateSearch(val query: String) : LibraryIntent
+    data class SelectBook(val id: String) : LibraryIntent
+    data class BookmarkBook(val book: BookItem) : LibraryIntent
 }
 
-// api/CatalogComponent.kt
-package com.luckycubes.tapreader.catalog.api
+// api/LibraryComponent.kt
+package com.luckycubes.tapreader.library.api
 
 import com.arkivanov.decompose.ComponentContext
 import com.arkivanov.decompose.value.Value
 
-interface CatalogComponent {
-    val state: Value<CatalogState>
-    fun onIntent(intent: CatalogIntent)
+interface LibraryComponent {
+    val state: Value<LibraryState>
+    fun onIntent(intent: LibraryIntent)
 
     // Фабрика с явным разделением на ComponentContext + Навигационные коллбэки
     fun interface Factory {
         operator fun invoke(
             componentContext: ComponentContext,
-            onProductSelected: (productId: String) -> Unit,
-            onOpenCart: () -> Unit,
-        ): CatalogComponent
+            onBookSelected: (bookId: String) -> Unit,
+            onOpenDictionary: () -> Unit,
+        ): LibraryComponent
     }
 }
 ```
@@ -231,31 +229,31 @@ interface CatalogComponent {
 ### 2. UI-слой: Разделение Stateful Screen и Stateless Content
 
 ```kotlin
-// api/CatalogScreen.kt (Public Stateful Container)
-package com.luckycubes.tapreader.catalog.api
+// api/LibraryScreen.kt (Public Stateful Container)
+package com.luckycubes.tapreader.library.api
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import com.arkivanov.decompose.extensions.compose.subscribeAsState
-import com.luckycubes.tapreader.catalog.impl.ui.CatalogContent
+import com.luckycubes.tapreader.library.impl.ui.LibraryContent
 
 @Composable
-fun CatalogScreen(
-    component: CatalogComponent,
+fun LibraryScreen(
+    component: LibraryComponent,
     modifier: Modifier = Modifier,
 ) {
     val state by component.state.subscribeAsState()
 
-    CatalogContent(
+    LibraryContent(
         state = state,
         onIntent = component::onIntent,
         modifier = modifier,
     )
 }
 
-// impl/ui/CatalogContent.kt (Internal Stateless Layout)
-package com.luckycubes.tapreader.catalog.impl.ui
+// impl/ui/LibraryContent.kt (Internal Stateless Layout)
+package com.luckycubes.tapreader.library.impl.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -265,20 +263,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
-import com.luckycubes.tapreader.catalog.api.CatalogIntent
-import com.luckycubes.tapreader.catalog.api.CatalogState
+import com.luckycubes.tapreader.library.api.LibraryIntent
+import com.luckycubes.tapreader.library.api.LibraryState
 
 @Composable
-internal fun CatalogContent(
-    state: CatalogState,
-    onIntent: (CatalogIntent) -> Unit,
+internal fun LibraryContent(
+    state: LibraryState,
+    onIntent: (LibraryIntent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         if (state.isLoading) {
             CircularProgressIndicator()
         } else {
-            Text(text = "Товаров: ${state.products.size}")
+            Text(text = "Книг в библиотеке: ${state.books.size}")
         }
     }
 }
@@ -286,9 +284,9 @@ internal fun CatalogContent(
 // Previews запускаются мгновенно без моков Decompose и DI!
 @Preview
 @Composable
-private fun CatalogContentPreview_Loading() {
-    CatalogContent(
-        state = CatalogState(isLoading = true),
+private fun LibraryContentLoadingPreview() {
+    LibraryContent(
+        state = LibraryState(isLoading = true),
         onIntent = {},
     )
 }
@@ -296,54 +294,53 @@ private fun CatalogContentPreview_Loading() {
 
 ---
 
-### 3. Decompose-реализация (`impl/CatalogComponentImpl.kt`)
+### 3. Decompose-реализация (`impl/LibraryComponentImpl.kt`)
 Оркестратор: управляет жизненным циклом, хранит изменяемый стейт, диспетчеризирует интенты и вызывает юзкейсы/репозитории.
 
 ```kotlin
-package com.luckycubes.tapreader.catalog.impl
+package com.luckycubes.tapreader.library.impl
 
 import com.arkivanov.decompose.ComponentContext
 import com.arkivanov.decompose.value.MutableValue
 import com.arkivanov.decompose.value.Value
 import com.arkivanov.decompose.value.update
-import com.arkivanov.essenty.lifecycle.coroutines.coroutineScope
+import com.luckycubes.tapreader.core.decompose.coroutineScope
 import kotlinx.coroutines.launch
-import com.luckycubes.tapreader.catalog.api.CatalogComponent
-import com.luckycubes.tapreader.catalog.api.CatalogIntent
-import com.luckycubes.tapreader.catalog.api.CatalogState
-import com.luckycubes.tapreader.catalog.impl.domain.FilterProductsUseCase
-import com.luckycubes.tapreader.data.cart.api.CartRepository
+import com.luckycubes.tapreader.library.api.LibraryComponent
+import com.luckycubes.tapreader.library.api.LibraryIntent
+import com.luckycubes.tapreader.library.api.LibraryState
+import com.luckycubes.tapreader.library.impl.domain.FilterBooksUseCase
+import com.luckycubes.tapreader.data.books.api.BookRepository
 
-internal class CatalogComponentImpl(
+internal class LibraryComponentImpl(
     componentContext: ComponentContext,
-    private val onProductSelected: (String) -> Unit,
-    private val onOpenCart: () -> Unit,
-    private val cartRepository: CartRepository,
-    private val filterProductsUseCase: FilterProductsUseCase,
-) : CatalogComponent, ComponentContext by componentContext {
+    private val onBookSelected: (String) -> Unit,
+    private val onOpenDictionary: () -> Unit,
+    private val bookRepository: BookRepository,
+    private val filterBooksUseCase: FilterBooksUseCase,
+) : LibraryComponent, ComponentContext by componentContext {
 
     private val scope = coroutineScope()
-    private val _state = MutableValue(CatalogState())
-    override val state: Value<CatalogState> = _state
+    private val _state = MutableValue(LibraryState())
+    override val state: Value<LibraryState> = _state
 
-    override fun onIntent(intent: CatalogIntent) {
+    override fun onIntent(intent: LibraryIntent) {
         when (intent) {
-            is CatalogIntent.Refresh -> loadProducts()
-            is CatalogIntent.SelectProduct -> onProductSelected(intent.id)
-            is CatalogIntent.OpenCart -> onOpenCart()
-            is CatalogIntent.AddToCart -> addToCart(intent.product)
-            is CatalogIntent.UpdateSearch -> updateSearch(intent.query)
+            is LibraryIntent.Refresh -> loadBooks()
+            is LibraryIntent.SelectBook -> onBookSelected(intent.id)
+            is LibraryIntent.BookmarkBook -> bookmarkBook(intent.book)
+            is LibraryIntent.UpdateSearch -> updateSearch(intent.query)
         }
     }
 
-    private fun loadProducts() {
+    private fun loadBooks() {
         _state.update { it.copy(isLoading = true) }
         // Загрузка через репозиторий / юзкейс
     }
 
-    private fun addToCart(product: ProductItem) {
+    private fun bookmarkBook(book: BookItem) {
         scope.launch {
-            cartRepository.addProduct(product.id)
+            bookRepository.toggleBookmark(book.id)
         }
     }
 
@@ -355,25 +352,25 @@ internal class CatalogComponentImpl(
 
 ---
 
-### 4. Доменный слой внутри фичи (`impl/domain/FilterProductsUseCase.kt`)
+### 4. Доменный слой внутри фичи (`impl/domain/FilterBooksUseCase.kt`)
 Чистая бизнес-логика. Ноль зависимостей от UI и платформы.
 
 ```kotlin
-package com.luckycubes.tapreader.catalog.impl.domain
+package com.luckycubes.tapreader.library.impl.domain
 
-import com.luckycubes.tapreader.catalog.api.ProductItem
+import com.luckycubes.tapreader.library.api.BookItem
 
-internal class FilterProductsUseCase {
+internal class FilterBooksUseCase {
     operator fun invoke(
-        products: List<ProductItem>,
+        books: List<BookItem>,
         query: String,
-        selectedCategory: String?
-    ): List<ProductItem> {
-        return products
+        selectedLanguage: String?
+    ): List<BookItem> {
+        return books
             .asSequence()
-            .filter { selectedCategory == null || it.category == selectedCategory }
+            .filter { selectedLanguage == null || it.language == selectedLanguage }
             .filter { it.title.contains(query, ignoreCase = true) }
-            .sortedBy { it.price }
+            .sortedBy { it.title }
             .toList()
     }
 }
@@ -381,28 +378,28 @@ internal class FilterProductsUseCase {
 
 ---
 
-### 5. Регистрация в DI (`api/di/CatalogModule.kt`)
+### 5. Регистрация в DI (`api/di/LibraryModule.kt`)
 Фабрика фичи инжектируется через DI, инкапсулируя статические зависимости:
 
 ```kotlin
-package com.luckycubes.tapreader.catalog.api.di
+package com.luckycubes.tapreader.library.api.di
 
-import com.luckycubes.tapreader.catalog.api.CatalogComponent
-import com.luckycubes.tapreader.catalog.impl.CatalogComponentImpl
-import com.luckycubes.tapreader.catalog.impl.domain.FilterProductsUseCase
+import com.luckycubes.tapreader.library.api.LibraryComponent
+import com.luckycubes.tapreader.library.impl.LibraryComponentImpl
+import com.luckycubes.tapreader.library.impl.domain.FilterBooksUseCase
 import org.koin.dsl.module
 
-val catalogModule = module {
-    factory { FilterProductsUseCase() }
+val libraryModule = module {
+    factory { FilterBooksUseCase() }
 
-    factory<CatalogComponent.Factory> {
-        CatalogComponent.Factory { context, onProductSelected, onOpenCart ->
-            CatalogComponentImpl(
+    factory<LibraryComponent.Factory> {
+        LibraryComponent.Factory { context, onBookSelected, onOpenDictionary ->
+            LibraryComponentImpl(
                 componentContext = context,
-                onProductSelected = onProductSelected,
-                onOpenCart = onOpenCart,
-                cartRepository = get(),
-                filterProductsUseCase = get(),
+                onBookSelected = onBookSelected,
+                onOpenDictionary = onOpenDictionary,
+                bookRepository = get(),
+                filterBooksUseCase = get(),
             )
         }
     }
@@ -413,24 +410,24 @@ val catalogModule = module {
 
 ## Часть 4. Готовность к будущему (Extension Roadmap)
 
-Благодаря заложенным «линиям разреза», ваше приложение готово к любым трансформациям:
+Благодаря заложенным «линиям разреза», приложение готово к любым трансформациям:
 
 ```text
                                 ТЕКУЩЕЕ СОСТОЯНИЕ
-                        [:feature:cart] (Single Module)
+                        [:features:reader] (Single Module)
                                         │
         ┌──────────────────────────────┼──────────────────────────────┐
         │ Потребовался SDK             │ Потребовался SwiftUI         │ Нужен Web / Desktop
         ▼                              ▼                              ▼
-[:kits:cart-sdk]              Выделяем [:feature:cart:ui]      Просто добавляем target:
+[:kits:reader-sdk]            Выделяем [:features:reader:ui]   Просто добавляем target:
   - Собирает AAR              Логика остается в core-impl.     jvm(), wasmJs()
-  - Собирает XCFramework      iOS пишет свой CartView.swift    Decompose и Data уже готовы!
+  - Собирает XCFramework      iOS пишет свой ReaderView.swift  Decompose и Data уже готовы!
   - 0 переписывания кода!     на чистом SwiftUI.               (0 платформенных связей)
 ```
 
-1. **Если завтра нужен SDK:** Создаем модуль `:kits:my-sdk`, подключаем нужные фичи, генерируем `XCFramework` / `AAR`. Сами фичи менять не нужно.
-2. **Если завтра нужен чистый SwiftUI на iOS:** Выносим Composable-функцию в `:feature:X:ui`, отдаем iOS-команде чистый `CatalogComponent` — они подписываются на стейт и рисуют нативный UI.
-3. **Если завтра нужен Desktop / Web:** Добавляем в `build-logic` таргеты `jvm()` и `wasmJs()`. Поскольку ваши компоненты, юзкейсы и данные не знают об Android-специфичных штуках (нет `android.content.Context`), они заведутся на десктопе и в браузере «из коробки».
+1. **Если завтра нужен SDK:** Создаем модуль `:kits:reader-sdk`, подключаем нужные фичи, генерируем `XCFramework` / `AAR`. Сами фичи менять не нужно.
+2. **Если завтра нужен чистый SwiftUI на iOS:** Выносим Composable-функцию в `:features:X:ui`, отдаем iOS-команде чистый `ReaderComponent` — они подписываются на стейт и рисуют нативный UI.
+3. **Если завтра нужен Desktop / Web:** Добавляем в `build-logic` таргеты `jvm()` и `wasmJs()`. Поскольку компоненты, юзкейсы и данные не знают об Android-специфичных штуках (нет `android.content.Context`), они заведутся на десктопе и в браузере «из коробки».
 
 ---
 
@@ -439,7 +436,7 @@ val catalogModule = module {
 Каждый разработчик или ИИ-ассистент при добавлении новой фичи должен строго следовать этому алгоритму:
 
 1. **Шаг 1. Описать состояние и действия в `api/`:**
-   - Создать `XState` (иммутабельный `data class` с дефолтными значениями).
+   - Создать `XState` (иммутабельный `@Immutable data class` с дефолтными значениями).
    - Создать `sealed interface XIntent` (все возможные события от пользователя).
 2. **Шаг 2. Создать контракт компонента в `api/`:**
    - Объявить `interface XComponent`:
@@ -470,7 +467,7 @@ val catalogModule = module {
   * *Симптом:* В `XComponent` появляются аннотации `@Composable`, параметры `Modifier` или метод `fun Render()`.
   * *Правило:* Интерфейс компонента — это **Pure Kotlin**. Вся верстка живёт строго в `XScreen` и `XContent`.
 * ❌ **Антипаттерн 2: Разрастание методов в интерфейсе компонента вместо `onIntent`.**
-  * *Симптом:* В `XComponent` добавляются `fun onRefreshClicked()`, `fun onProductClicked(id: String)`.
+  * *Симптом:* В `XComponent` добавляются `fun onRefreshClicked()`, `fun onBookClicked(id: String)`.
   * *Правило:* Все события передаются только через `fun onIntent(intent: XIntent)`.
 * ❌ **Антипаттерн 3: Сокрытие `state` из публичного интерфейса компонента.**
   * *Симптом:* Компонент не выставляет `val state: Value<XState>`.
@@ -484,11 +481,3 @@ val catalogModule = module {
 * ❌ **Антипаттерн 6: Утечка деталей реализации из `impl`.**
   * *Симптом:* `XComponentImpl` или `XContent` объявлены как `public`.
   * *Правило:* Все классы в `impl` должны быть строго `internal`. Внешний мир видит только то, что находится в `api`.
-
----
-
-## Финальное напутствие
-
-Вы нашли идеальный баланс: **не плодить лишние модули и бойлерплейт сегодня, но писать код так, чтобы его можно было безболезненно масштабировать завтра.**
-
-Держите компоненты независимыми от UI, делайте экраны управляемыми через MVI-стейт и интенты, выносите тяжелую логику в маленькие юзкейсы — и ваш проект станет эталоном современной, мощной и элегантной KMP-архитектуры. В добрый путь!

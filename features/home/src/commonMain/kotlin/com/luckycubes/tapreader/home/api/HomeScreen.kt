@@ -14,6 +14,7 @@ fun HomeScreen(
     val state by component.state.subscribeAsState()
     HomeContent(
         state = state,
+        onIntent = component::onIntent,
         modifier = modifier,
     )
 }

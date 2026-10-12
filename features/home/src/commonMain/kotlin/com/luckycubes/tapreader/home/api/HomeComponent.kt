@@ -5,6 +5,7 @@ import com.arkivanov.decompose.value.Value
 
 interface HomeComponent {
     val state: Value<HomeState>
+    fun onIntent(intent: HomeIntent)
 
     fun interface Factory {
         operator fun invoke(componentContext: ComponentContext): HomeComponent

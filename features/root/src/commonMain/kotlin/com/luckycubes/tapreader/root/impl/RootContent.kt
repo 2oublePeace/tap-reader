@@ -13,7 +13,7 @@ import com.luckycubes.tapreader.profile.api.ProfileScreen
 import com.luckycubes.tapreader.root.api.RootComponent
 
 @Composable
-fun RootContent(
+internal fun RootContent(
     component: RootComponent,
     modifier: Modifier = Modifier,
 ) {

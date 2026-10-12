@@ -7,6 +7,15 @@
 
 ---
 
+## [Unreleased]
+
+### Changed
+- Очищены остатки генератора шаблонов (описания трекера привычек, интернет-магазина и CLI-скрипта) в [README.md](../../README.md), паспортах модулей и манифестах (`.agents/manifests/`).
+- Контракты и верстка модулей `:features:home`, `:features:profile` и `:features:root` приведены в полное соответствие с Архитектурным Манифестом и Манифестом Compose (`HomeIntent`, `ProfileIntent`, `onIntent`, `@Immutable`, `@Preview`, `internal fun RootContent`).
+- Исправлен регистр импорта `import Shared` в `iosApp/iosApp/iOSApp.swift`.
+
+---
+
 ## [0.1.0] - 2026-10-12
 
 ### Added

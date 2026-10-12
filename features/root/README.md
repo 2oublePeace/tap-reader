@@ -25,12 +25,19 @@
       fun interface Factory
   }
   ```
-* **`RootContent`:** Корневая Composable-функция, принимающая `RootComponent` и отрисовывающая активный дочерний экран.
+* **`RootScreen`:** Публичный Composable-контейнер, принимающий `RootComponent` и делегирующий отрисовку во внутренний `RootContent`.
 * **`rootModule` (`api/di/`):** Koin-модуль, регистрирующий `RootComponent.Factory`.
 
 ---
 
-## 3. Зависимости
+## 3. Внутренняя реализация (`impl/`, internal)
+
+* **`RootComponentImpl`:** Реализация навигационного стека `childStack` и сериализуемых конфигураций экранов.
+* **`RootContent`:** Внутренняя Composable-функция (`internal`), отрисовывающая активный дочерний экран с анимациями переходов.
+
+---
+
+## 4. Зависимости
 
 ### Зависит от:
 * `:core:decompose` (базовые утилиты)
@@ -38,10 +45,11 @@
 * `:features:profile` (публичный контракт фичи Profile)
 
 ### От него зависят:
-* `:shared` (подключает `RootContent` в корневой `App.kt` и инициализирует платформенные вьюконтейнеры).
+* `:shared` (подключает `RootScreen` в корневой `App.kt` и инициализирует платформенные вьюконтейнеры).
+* `:core:di` (для регистрации `rootModule` в графе)
 
 ---
 
-## 4. История изменений модуля (Recent Changes)
+## 5. История изменений модуля (Recent Changes)
 
 * **2026-10-12 (TP-1):** Реализация корневого навигационного стека Decompose с дочерними компонентами Home и Profile ([ADR-0001](file:///home/emiryanvl/Проекты/tapreader/docs/adr/0001-pure-decompose-and-mvi.md)).
